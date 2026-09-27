@@ -1,0 +1,250 @@
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+body {
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    position: relative;
+    background: url('https://images.unsplash.com/photo-1497366216548-37526070297c?auto=format&fit=crop&w=1920&q=80') no-repeat center center fixed;
+    background-size: cover;
+}
+
+.background-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(15, 23, 42, 0.75);
+    z-index: 1;
+}
+
+.container {
+    position: relative;
+    z-index: 2;
+    width: 100%;
+    max-width: 800px;
+    padding: 20px;
+}
+
+.card {
+    background: #ffffff;
+    border-radius: 12px;
+    padding: 30px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+}
+
+h1, h2, h3 {
+    color: #1e293b;
+    margin-bottom: 10px;
+}
+
+p {
+    color: #64748b;
+    font-size: 0.95rem;
+}
+
+.input-group {
+    margin-top: 15px;
+    display: flex;
+    flex-direction: column;
+}
+
+.input-group label {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #334155;
+    margin-bottom: 5px;
+}
+
+.input-group input, .input-group textarea {
+    padding: 10px 14px;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    font-size: 0.95rem;
+    outline: none;
+    transition: border-color 0.2s;
+}
+
+.input-group input:focus, .input-group textarea:focus {
+    border-color: #2563eb;
+}
+
+.error-msg {
+    color: #dc2626;
+    font-size: 0.8rem;
+    margin-top: 4px;
+}
+
+.hint {
+    color: #64748b;
+    font-size: 0.75rem;
+    margin-top: 4px;
+}
+
+.btn {
+    padding: 10px 18px;
+    border: none;
+    border-radius: 6px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color 0.2s;
+    margin-top: 15px;
+}
+
+.btn-primary {
+    background-color: #2563eb;
+    color: #ffffff;
+}
+
+.btn-primary:hover {
+    background-color: #1d4ed8;
+}
+
+.btn-secondary {
+    background-color: #e2e8f0;
+    color: #334155;
+}
+
+.btn-secondary:hover {
+    background-color: #cbd5e1;
+}
+
+.btn-sm {
+    padding: 6px 12px;
+    font-size: 0.85rem;
+}
+
+.auth-toggle {
+    margin-top: 20px;
+    text-align: center;
+    font-size: 0.9rem;
+}
+
+.auth-toggle a {
+    color: #2563eb;
+    text-decoration: none;
+    font-weight: 600;
+}
+
+.hidden {
+    display: none !important;
+}
+
+.header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.dash-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+    margin-top: 20px;
+}
+
+.dash-card {
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 20px;
+    text-align: center;
+    background: #f8fafc;
+}
+
+.sub-section {
+    margin-top: 20px;
+}
+
+hr {
+    border: none;
+    border-top: 1px solid #e2e8f0;
+    margin: 20px 0;
+}
+
+.file-upload-box {
+    margin-top: 15px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.file-upload-box input[type="file"] {
+    display: none;
+}
+
+.file-label {
+    background: #f1f5f9;
+    padding: 8px 14px;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.9rem;
+}
+
+.file-name {
+    font-size: 0.85rem;
+    color: #64748b;
+}
+
+.spinner-container {
+    text-align: center;
+    margin-top: 20px;
+}
+
+.spinner {
+    width: 30px;
+    height: 30px;
+    border: 4px solid #f3f3f3;
+    border-top: 4px solid #2563eb;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin: 0 auto 10px;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+.share-box {
+    background: #f1f5f9;
+    padding: 15px;
+    border-radius: 8px;
+    margin-bottom: 20px;
+}
+
+.link-input-group {
+    display: flex;
+    gap: 10px;
+    margin-top: 8px;
+}
+
+.link-input-group input {
+    flex: 1;
+    padding: 8px;
+    border-radius: 6px;
+    border: 1px solid #cbd5e1;
+}
+
+.portfolio-preview-container {
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 20px;
+    max-height: 400px;
+    overflow-y: auto;
+    background: #ffffff;
+}
+
+.info-box {
+    background: #fef3c7;
+    border-left: 4px solid #f59e0b;
+    padding: 12px;
+    border-radius: 4px;
+}
