@@ -1,175 +1,248 @@
 import os
-import re
-from dotenv import load_dotenv
-from flask import Flask, jsonify, request, send_from_directory
+from flask import Flask, render_template, request, redirect, url_for, flash, session
 import mysql.connector
-import requests
-from werkzeug.security import check_password_hash, generate_password_hash
+from dotenv import load_dotenv
+import google.generativeai as genai
+from werkzeug.security import generate_password_hash, check_password_hash
+from pypdf import PdfReader
 
 load_dotenv()
 
-app = Flask(__name__, static_folder='.', static_url_path='')
+app = Flask(__name__)
+app.secret_key = os.getenv("SECRET_KEY", "super-secret-key-998877")
 
+# Configure Gemini API
+GENAI_KEY = os.getenv("gemini_key")
+if GENAI_KEY:
+    genai.configure(api_key=GENAI_KEY)
 
-# Database connection helper
+# Safe MySQL Connection Helper
 def get_db_connection():
-  return mysql.connector.connect(
-      host=os.getenv('MYSQL_HOST', 'localhost'),
-      user=os.getenv('MYSQL_USER', 'root'),
-      password=os.getenv('MYSQL_PASSWORD', ''),
-      database=os.getenv('MYSQL_DB', 'portfolio_db'),
-  )
+    try:
+        conn = mysql.connector.connect(
+            host=os.getenv("MYSQL_HOST", "localhost"),
+            user=os.getenv("MYSQL_USER", "root"),
+            password=os.getenv("MYSQL_PASSWORD", ""),
+            database=os.getenv("MYSQL_DB", "portfolio_db"),
+            port=int(os.getenv("MYSQL_PORT", 3306))
+        )
+        return conn
+    except mysql.connector.Error as err:
+        print(f"Database Connection Error: {err}")
+        return None
 
+# Database Table Initialization
+def init_db():
+    conn = get_db_connection()
+    if conn:
+        try:
+            cursor = conn.cursor()
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS users (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    email VARCHAR(255) UNIQUE NOT NULL,
+                    password VARCHAR(255) NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS portfolios (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    user_id INT NOT NULL,
+                    extracted_text LONGTEXT,
+                    generated_content LONGTEXT NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+                )
+            """)
+            conn.commit()
+            cursor.close()
+            conn.close()
+        except mysql.connector.Error as err:
+            print(f"Database Init Error: {err}")
+
+init_db()
+
+SYSTEM_PROMPT = """
+You are an expert Executive Resume Writer, Technical Recruiter, and Senior Front-End Engineer.
+Analyze the provided raw resume text and auto-extract all key details (Candidate Name, Role, Email, Skills, Work Experience, Projects).
+
+Generate a COMPLETE, self-contained HTML page with embedded CSS styling for an executive portfolio.
+
+CRITICAL DESIGN & CONTENT GUIDELINES:
+1. DESIGN & THEME:
+   - Modern, sleek dark-mode tech aesthetic (Background: #0F172A, Primary Text: #F8FAFC, Accents: #38BDF8, #818CF8).
+   - Responsive layout with glassmorphism hover effects and clear card divisions.
+2. RECRUITER-FOCUSED COPYWRITING:
+   - Rephrase achievements into impact-driven statements using active verbs (e.g., 'Engineered', 'Architected', 'Optimized').
+   - Structure projects using the STAR method (Situation, Task, Action, Result).
+3. REQUIRED SECTIONS TO GENERATE:
+   - HERO SECTION: Candidate Name, Job Title, elevator pitch, 'Download Resume' CTA, 'Contact Me' CTA.
+   - SKILLS GRID: Group skills cleanly into visually distinct badges or cards.
+   - WORK & PROJECTS: High-converting project/experience cards detailing impact, technologies, and achievements.
+   - ABOUT ME: A compelling professional summary.
+   - FOOTER/CONTACT: Contact details and social links extracted from the resume.
+
+STRICT FORMATTING RULE:
+- Output ONLY the raw HTML code starting with <!DOCTYPE html> and ending with </html>.
+- DO NOT wrap the output in markdown code blocks (```html ... ```) or write conversational text.
+"""
 
 @app.route('/')
 def index():
-  return send_from_directory('.', 'index.html')
+    return render_template('index.html')
 
-
-# ---------------- USER AUTHENTICATION ---------------- #
-
-
-@app.route('/api/signup', methods=['POST'])
+@app.route('/signup', methods=['POST'])
 def signup():
-  data = request.get_json()
-  email = data.get('email', '').strip().lower()
-  password = data.get('password', '')
+    email = request.form.get('email', '').strip().lower()
+    password = request.form.get('password', '').strip()
 
-  if not email or not password:
-    return jsonify({'error': 'Email and password required.'}), 400
+    if not email or not password:
+        flash("Please provide both email and password.", "error")
+        return redirect(url_for('index'))
 
-  # Hash password securely
-  hashed_pwd = generate_password_hash(password)
-
-  try:
+    hashed_pw = generate_password_hash(password)
     conn = get_db_connection()
-    cursor = conn.cursor()
+    if conn:
+        try:
+            cursor = conn.cursor()
+            cursor.execute("INSERT INTO users (email, password) VALUES (%s, %s)", (email, hashed_pw))
+            conn.commit()
+            cursor.close()
+            conn.close()
+            flash("Account created successfully! Please login.", "success")
+        except mysql.connector.Error:
+            flash("Email already registered or database error.", "error")
+    else:
+        flash("Database connection failed.", "error")
 
-    # Check if user already exists
-    cursor.execute('SELECT id FROM users WHERE email = %s', (email,))
-    if cursor.fetchone():
-      return jsonify({'error': 'Account with this email already exists.'}), 400
+    return redirect(url_for('index'))
 
-    # Insert user into MySQL
-    cursor.execute(
-        'INSERT INTO users (email, password_hash) VALUES (%s, %s)',
-        (email, hashed_pwd),
-    )
-    conn.commit()
-
-    cursor.close()
-    conn.close()
-    return jsonify({'message': 'Account created successfully!'}), 201
-  except Exception as e:
-    return jsonify({'error': f'Database error: {str(e)}'}), 500
-
-
-@app.route('/api/login', methods=['POST'])
+@app.route('/login', methods=['POST'])
 def login():
-  data = request.get_json()
-  email = data.get('email', '').strip().lower()
-  password = data.get('password', '')
+    email = request.form.get('email', '').strip().lower()
+    password = request.form.get('password', '').strip()
 
-  try:
     conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
+    if conn:
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("SELECT * FROM users WHERE email = %s", (email,))
+        user = cursor.fetchone()
+        cursor.close()
+        conn.close()
 
-    cursor.execute('SELECT * FROM users WHERE email = %s', (email,))
-    user = cursor.fetchone()
+        if user and check_password_hash(user['password'], password):
+            session['user_id'] = user['id']
+            session['user_email'] = user['email']
+            flash("Logged in successfully!", "success")
+        else:
+            flash("Invalid email or password.", "error")
+    else:
+        flash("Database connection failed.", "error")
 
-    cursor.close()
-    conn.close()
+    return redirect(url_for('index'))
 
-    # Verify password hash
-    if not user or not check_password_hash(user['password_hash'], password):
-      return jsonify({'error': 'Invalid email or password.'}), 401
+@app.route('/logout')
+def logout():
+    session.clear()
+    flash("Logged out successfully.", "success")
+    return redirect(url_for('index'))
 
-    return jsonify({
-        'message': 'Login successful',
-        'email': user['email'],
-        'hasPortfolio': bool(user['portfolio_html']),
-    })
-  except Exception as e:
-    return jsonify({'error': f'Database error: {str(e)}'}), 500
-
-
-# ---------------- PORTFOLIO GENERATION & VIEW ---------------- #
-
-
-@app.route('/api/generate-portfolio', methods=['POST'])
+@app.route('/generate', methods=['POST'])
 def generate_portfolio():
-  try:
-    api_key = os.getenv('gemini_key')
-    if not api_key:
-      return jsonify({'error': 'gemini_key is missing in .env'}), 500
+    if 'user_id' not in session:
+        flash("Please login to generate your portfolio.", "error")
+        return redirect(url_for('index'))
 
-    data = request.get_json()
-    email = data.get('email', '').strip().lower()
-    resume_text = data.get('resumeText', '')
+    if 'resume' not in request.files:
+        flash("No file uploaded. Please select a PDF resume.", "error")
+        return redirect(url_for('index'))
 
-    if not email or not resume_text:
-      return jsonify({'error': 'Email and resume text are required.'}), 400
+    file = request.files['resume']
+    if file.filename == '' or not file.filename.endswith('.pdf'):
+        flash("Please upload a valid PDF file.", "error")
+        return redirect(url_for('index'))
 
-    prompt = (
-        'Convert the following resume text into a clean, modern HTML portfolio'
-        ' layout using inline CSS styling and clean tags like h1, h2, p, ul,'
-        ' li. Do not wrap inside markdown backticks:\n\n'
-        f'{resume_text}'
-    )
+    try:
+        reader = PdfReader(file)
+        extracted_text = ""
+        for page in reader.pages:
+            text = page.extract_text()
+            if text:
+                extracted_text += text + "\n"
+    except Exception as e:
+        print(f"PDF Extraction Error: {e}")
+        flash("Failed to read PDF file.", "error")
+        return redirect(url_for('index'))
 
-    url = f'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}'
-    payload = {'contents': [{'parts': [{'text': prompt}]}]}
-    headers = {'Content-Type': 'application/json'}
+    if not extracted_text.strip():
+        flash("Could not extract text from PDF. Ensure it is not an image scan.", "error")
+        return redirect(url_for('index'))
 
-    response = requests.post(url, json=payload, headers=headers)
-    response_data = response.json()
+    full_prompt = f"{SYSTEM_PROMPT}\n\nCandidate Resume Text:\n{extracted_text}"
 
-    if response.status_code != 200:
-      return jsonify({'error': 'Failed calling Gemini API.'}), response.status_code
+    try:
+        model = genai.GenerativeModel("gemini-1.5-flash")
+        response = model.generate_content(full_prompt)
+        generated_html = response.text.strip()
 
-    raw_text = response_data['candidates'][0]['content']['parts'][0]['text']
-    clean_html = re.sub(r'```html|```', '', raw_text).strip()
+        if generated_html.startswith("```"):
+            lines = generated_html.splitlines()
+            if lines[0].startswith("```"):
+                lines = lines[1:]
+            if lines and lines[-1].startswith("```"):
+                lines = lines[:-1]
+            generated_html = "\n".join(lines).strip()
 
-    # Save portfolio directly into MySQL
+    except Exception as e:
+        print(f"Gemini API Error: {e}")
+        flash("AI Portfolio generation failed. Check your API key.", "error")
+        return redirect(url_for('index'))
+
+    user_id = session['user_id']
+    portfolio_id = None
     conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute(
-        'UPDATE users SET portfolio_html = %s WHERE email = %s',
-        (clean_html, email),
-    )
-    conn.commit()
-    cursor.close()
-    conn.close()
+    if conn:
+        try:
+            cursor = conn.cursor()
+            cursor.execute(
+                "INSERT INTO portfolios (user_id, extracted_text, generated_content) VALUES (%s, %s, %s)",
+                (user_id, extracted_text, generated_html)
+            )
+            conn.commit()
+            portfolio_id = cursor.lastrowid
+            cursor.close()
+            conn.close()
+        except mysql.connector.Error as err:
+            print(f"MySQL Insert Error: {err}")
 
-    return jsonify({'portfolioHtml': clean_html})
+    if portfolio_id:
+        return redirect(url_for('view_portfolio', portfolio_id=portfolio_id))
+    else:
+        return generated_html
 
-  except Exception as e:
-    return jsonify({'error': str(e)}), 500
+@app.route('/portfolio/<int:portfolio_id>')
+def view_portfolio(portfolio_id):
+    if 'user_id' not in session:
+        return redirect(url_for('index'))
 
-
-@app.route('/api/get-portfolio', methods=['GET'])
-def get_portfolio():
-  email = request.args.get('email', '').strip().lower()
-  if not email:
-    return jsonify({'error': 'Email parameter required.'}), 400
-
-  try:
     conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
-    cursor.execute(
-        'SELECT portfolio_html FROM users WHERE email = %s', (email,)
-    )
-    user = cursor.fetchone()
-    cursor.close()
-    conn.close()
+    if not conn:
+        return "Database connection error.", 500
 
-    if not user or not user['portfolio_html']:
-      return jsonify({'portfolioHtml': None})
+    try:
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("SELECT generated_content FROM portfolios WHERE id = %s AND user_id = %s", (portfolio_id, session['user_id']))
+        result = cursor.fetchone()
+        cursor.close()
+        conn.close()
 
-    return jsonify({'portfolioHtml': user['portfolio_html']})
-  except Exception as e:
-    return jsonify({'error': str(e)}), 500
-
+        if result and result.get('generated_content'):
+            return result['generated_content']
+        else:
+            return "Portfolio not found or unauthorized.", 404
+    except mysql.connector.Error as err:
+        return f"Database error: {err}", 500
 
 if __name__ == '__main__':
-  app.run(host='0.0.0.0', port=5000, debug=True)
+    app.run(debug=True)

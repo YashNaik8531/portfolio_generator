@@ -4,115 +4,85 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AI Portfolio Generator</title>
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
-    <div class="background-overlay"></div>
 
-    <div class="container">
-        <!-- Auth View -->
-        <div id="authView" class="card">
-            <h1 id="authTitle">Sign In</h1>
-            <p id="authSubtitle">Welcome back! Please enter your details.</p>
-            
-            <form id="authForm" onsubmit="handleAuth(event)">
-                <div class="input-group">
-                    <label for="email">Email</label>
-                    <input type="email" id="email" placeholder="name@example.com" required>
-                    <small class="error-msg" id="emailError"></small>
-                </div>
-                
-                <div class="input-group">
-                    <label for="password">Password</label>
-                    <input type="password" id="password" placeholder="••••••••" required>
-                    <small class="error-msg" id="passwordError"></small>
-                    <small class="hint" id="passwordHint" style="display:none;">Must be 8+ chars, with 1 digit & 1 special symbol.</small>
-                </div>
-
-                <button type="submit" class="btn btn-primary" id="authSubmitBtn">Sign In</button>
-            </form>
-
-            <div class="auth-toggle">
-                <span id="toggleText">Don't have an account?</span>
-                <a href="#" id="toggleAuthBtn" onclick="toggleAuthMode(event)">Create Account</a>
-            </div>
-        </div>
-
-        <!-- Dashboard View -->
-        <div id="dashboardView" class="card hidden">
-            <div class="header">
-                <h2>Dashboard</h2>
-                <button class="btn btn-secondary btn-sm" onclick="signOut()">Sign Out</button>
-            </div>
-            <p class="welcome-text">Select an option to manage your portfolio:</p>
-
-            <div class="dash-grid">
-                <div class="dash-card">
-                    <h3>Upload Resume</h3>
-                    <p>Convert your resume into a stunning AI-generated portfolio.</p>
-                    <button class="btn btn-primary" onclick="showSection('uploadSection')">Upload Resume</button>
-                </div>
-                <div class="dash-card">
-                    <h3>View Portfolio</h3>
-                    <p>Preview and copy your active shareable portfolio link.</p>
-                    <button class="btn btn-secondary" onclick="showSection('viewSection')">View Portfolio</button>
-                </div>
-            </div>
-
-            <!-- Upload Section -->
-            <div id="uploadSection" class="sub-section hidden">
-                <hr>
-                <h3>Upload Your Resume</h3>
-                <p class="section-desc">Paste your plain text resume or upload a <code>.txt</code> file to analyze.</p>
-
-                <div class="file-upload-box">
-                    <input type="file" id="resumeFileInput" accept=".txt,.doc,.pdf" onchange="handleFileSelect(event)">
-                    <label for="resumeFileInput" class="file-label">📁 Choose File from Computer</label>
-                    <span id="fileNameDisplay" class="file-name">No file chosen</span>
-                </div>
-
-                <div class="input-group" style="margin-top: 15px;">
-                    <label for="resumeTextInput">Or Paste Resume Content Directly:</label>
-                    <textarea id="resumeTextInput" rows="6" placeholder="Paste your work history, skills, education..."></textarea>
-                </div>
-
-                <div class="actions">
-                    <button class="btn btn-primary" id="generateBtn" onclick="generatePortfolio()">Generate Portfolio</button>
-                    <button class="btn btn-secondary" onclick="hideSubSections()">Cancel</button>
-                </div>
-
-                <div id="loadingSpinner" class="spinner-container hidden">
-                    <div class="spinner"></div>
-                    <p>Analyzing resume with Gemini AI...</p>
-                </div>
-            </div>
-
-            <!-- View Section -->
-            <div id="viewSection" class="sub-section hidden">
-                <hr>
-                <h3>Your Active Portfolio</h3>
-                
-                <div id="noPortfolioMsg" class="info-box hidden">
-                    <p>You haven't generated a portfolio yet. Upload your resume to get started!</p>
-                </div>
-
-                <div id="portfolioContent" class="hidden">
-                    <div class="share-box">
-                        <label>Your Portfolio Link:</label>
-                        <div class="link-input-group">
-                            <input type="text" id="portfolioLinkInput" readonly>
-                            <button class="btn btn-primary btn-sm" onclick="copyPortfolioLink()">Copy Link</button>
-                        </div>
-                    </div>
-
-                    <div id="portfolioPreview" class="portfolio-preview-container">
-                        <!-- Generated HTML portfolio injected here -->
-                    </div>
-                </div>
-            </div>
-        </div>
+    {% if session.get('user_id') %}
+    <div class="top-bar">
+        <span>Logged in as: <strong>{{ session.get('user_email') }}</strong></span>
+        <a href="/logout" class="logout-btn">Logout</a>
     </div>
 
-    <script src="script.js"></script>
+    <div class="container">
+        <h1>AI Resume Portfolio Generator</h1>
+        <p>Upload your PDF resume. AI will automatically extract details and build your live website.</p>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+            {% for category, message in messages %}
+              <div class="flash {{ category }}">{{ message }}</div>
+            {% endfor %}
+          {% endif %}
+        {% endwith %}
+
+        <form action="/generate" method="POST" enctype="multipart/form-data" id="uploadForm">
+            <div class="upload-box" id="dropArea">
+                <input type="file" id="resume" name="resume" accept=".pdf" required hidden>
+                <div class="upload-content">
+                    <p id="fileLabel">Drag & drop your PDF resume here, or <span class="highlight">Browse</span></p>
+                    <small>Supports: PDF files only</small>
+                </div>
+            </div>
+            <button type="submit" id="generateBtn">Generate Portfolio from Resume</button>
+        </form>
+    </div>
+    {% else %}
+    <div class="container">
+        <h1>AI Portfolio Generator</h1>
+        <p>Sign up or Login to start generating portfolios directly from your PDF resume.</p>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+            {% for category, message in messages %}
+              <div class="flash {{ category }}">{{ message }}</div>
+            {% endfor %}
+          {% endif %}
+        {% endwith %}
+
+        <div class="tab-buttons">
+            <button id="loginTabBtn" class="tab-btn active" onclick="switchTab('login')">Login</button>
+            <button id="signupTabBtn" class="tab-btn" onclick="switchTab('signup')">Sign Up</button>
+        </div>
+
+        <!-- Login Form -->
+        <form action="/login" method="POST" id="loginForm" class="auth-form">
+            <div class="form-group">
+                <label for="loginEmail">Email Address</label>
+                <input type="email" id="loginEmail" name="email" required placeholder="name@example.com">
+            </div>
+            <div class="form-group">
+                <label for="loginPassword">Password</label>
+                <input type="password" id="loginPassword" name="password" required placeholder="••••••••">
+            </div>
+            <button type="submit">Login</button>
+        </form>
+
+        <!-- Signup Form -->
+        <form action="/signup" method="POST" id="signupForm" class="auth-form hidden">
+            <div class="form-group">
+                <label for="signupEmail">Email Address</label>
+                <input type="email" id="signupEmail" name="email" required placeholder="name@example.com">
+            </div>
+            <div class="form-group">
+                <label for="signupPassword">Password</label>
+                <input type="password" id="signupPassword" name="password" required placeholder="••••••••">
+            </div>
+            <button type="submit">Create Account</button>
+        </form>
+    </div>
+    {% endif %}
+
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
 </body>
 </html>

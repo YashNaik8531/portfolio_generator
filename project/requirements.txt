@@ -4,3 +4,5 @@ python-dotenv
 requests
 werkzeug
 gunicorn
+pypdf
+google-generativeai
